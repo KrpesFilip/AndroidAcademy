@@ -1,0 +1,119 @@
+class Player(){
+    val name: String = "N";
+    var numberOfLives = 1;
+    var score = 0;
+    
+   fun AddScore(x: Int ){
+       score+=x;
+       
+   }
+   
+   fun GetStaus(){
+       if(numberOfLives==0)
+       println("Dead");
+       else
+       println("Alive");
+   }
+   
+   fun IsAlive():Boolean{
+       if(numberOfLives>=1)
+       return true;
+       else
+       return false;
+       
+   }
+    
+}
+
+ fun NSumNatural(x: Int):Int{
+    var sum = 0;
+    for(i in 0..x)
+    {
+        sum+=i;
+        
+    }
+    return sum;
+    
+}
+ 
+fun Counta(input: String):Int{
+    var sum=0;
+    for(i in 0..input.length)
+    if(input[i]=='a')
+    sum++;
+    
+    return sum;
+    
+   }
+
+fun CheckPassword(input: String):Boolean{
+    if(input.length<8)
+    return false;
+    
+    var t=0;
+    for(i in 0..input.length)
+    {
+    
+        if(input[i]>='0' && input[i]<='9')
+    {
+        t++;
+        break;
+    }
+    
+    if(input[i]>='A' && input[i]<='Z')
+    {
+        t++;
+        break;
+    }
+    
+    }
+    
+    if(t==2)
+    	return true;
+    else
+        return false;
+        
+        //val hassUpperCase=pasword.any{char->char.isUppercase()};
+    	
+}
+
+class UserAccount(val username: String, var email: String, var age: Int){
+    
+    var isVerified = false;
+    private set
+    
+    
+    init{
+        if(age<13)
+        throw Exception("Age must be 13 or more");
+        
+    }
+    
+    
+}
+
+val player=Player()
+
+
+fun main() {
+    val ua=UserAccount("w","s",3);
+    var score1= 1;
+    
+    val imput=2;
+    
+    println("Sum="+NSumNatural(imput));
+    
+    var result = "";
+    player.AddScore(score1);
+    
+    if(player.score>5)
+    result="W";
+    else
+    result="L";
+    
+    when (result) {
+    "W" -> println("You win")
+    "L" -> println("You lose")
+    else -> println("Unknown")     
+}
+}
