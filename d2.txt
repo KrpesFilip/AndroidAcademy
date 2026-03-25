@@ -1,0 +1,55 @@
+//TIP To <b>Run</b> code, press <shortcut actionId="Run"/> or
+// click the <icon src="AllIcons.Actions.Execute"/> icon in the gutter.
+/*
+abstract class Device(){
+    abstract val name: String, abstract val state: Float}
+
+//abstract klasa -is a
+//interface - has a
+
+
+
+class Bulb( override val name:String, override val state ):Device()
+
+interface Dimable{
+    fun Dim()
+}
+
+class Controller(val device:Device){
+    fun operate(){}
+    device.turnon()
+    //ako ima dimmable interface
+    //oba devicea imaju inheritanu abstract klasu, zarulja ima interface dimmable, kontroler klasa kontrolira both i ima posebno ponasanje ako ima interfce
+    if(device is Dimmable)
+
+}
+*/
+//z2 fun operate(a int, b int, operation (int,int)->int ) {
+// println(operation(a,b))
+// }
+//fun Strin.isEmil()=this.contains(...)
+
+//z3
+fun LetIntoClub(people:Collection<Int>){
+    for (personAge in people)
+    {
+        //.filter(it>18) after use map to print
+        if(personAge>=18)
+            println("Let in age is $personAge")
+        else
+            println("Person is too young ($personAge)")
+
+    }
+
+}
+
+fun main() {
+/*
+    val peoplesAges= listOf(1,2,3,15,44,22,5,22,44)
+    LetIntoClub(peoplesAges)
+
+    val grouped=names.groupedBy{it.first()}
+    println(grouped)
+    val counted=names.GroupedBy{it.first()}.easchCount()
+    print counted*/
+}
