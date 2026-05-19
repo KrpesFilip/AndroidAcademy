@@ -32,11 +32,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.*
 
@@ -46,14 +49,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
 
-            var notes by remember {
-                mutableStateOf(
-                    mutableListOf(
-                        Note(1, "tit1", ""),
-                        Note(2, "tit2", "")
-                    )
-                )
-            }
+
 
             val navController = rememberNavController()
             Scaffold { innerPadding ->
@@ -65,17 +61,13 @@ class MainActivity : ComponentActivity() {
                         startDestination = "notes"
                     ) {
                         composable("notes") {
-                            notesScreen(navController, notes)
+                            notesScreen(navController)
                         }
 
-                        composable("description/{noteId}") {backStackEntry ->
-                            val noteId = backStackEntry.arguments?.getString("noteId")?.toInt() ?: -1
+                        composable("edit/{noteId}") { backStackEntry ->
+                            val id = backStackEntry.arguments?.getString("noteId")!!.toInt()
+                            descriptionScreen(navController, id)
 
-                            descriptionScreen(
-                                navController = navController,
-                                notes = notes,
-                                noteId = noteId
-                            )
                         }
                     }
                 }
@@ -90,6 +82,35 @@ data class Note(
     var title:String,
     var description:String
 )
+
+object NoteRepository {
+    val notes = mutableStateListOf(
+        Note(1, "tit1", ""),
+        Note(2, "tit2", "")
+    )
+}
+
+class NotesViewModel : ViewModel() {
+    val notes = NoteRepository.notes
+}
+
+class EditViewModel : ViewModel() {
+
+    fun getNote(id: Int): Note {
+        return NoteRepository.notes.find { it.id == id }
+            ?: Note(id, "", "")
+    }
+
+    fun save(note: Note) {
+        val index = NoteRepository.notes.indexOfFirst { it.id == note.id }
+
+        if (index >= 0) {
+            NoteRepository.notes[index] = note
+        } else {
+            NoteRepository.notes.add(note)
+        }
+    }
+}
 
 @Composable
 fun noteElement(note:Note, onClick: () -> Unit) {
@@ -224,15 +245,23 @@ fun notesList(notes: List<Note>, navController: NavController){
 }
 
 @Composable
-fun notesScreen(navController: NavController, notes: List<Note>){
+fun notesScreen(navController: NavController){
+
+    val viewModel: NotesViewModel = viewModel()
 
 
     Column {
         notesScreenTopBanner {
-            val newId = (notes.maxOfOrNull { it.id } ?: 0) + 1
-            navController.navigate("description/$newId")
+            val newId = (viewModel.notes.maxOfOrNull { it.id } ?: 0) + 1
+            navController.navigate("edit/-1")
         }
-        notesList(notes, navController)
+        LazyColumn {
+            items(viewModel.notes) { note ->
+                noteElement(note) {
+                    navController.navigate("edit/${note.id}")
+                }
+            }
+        }
     }
 
 }
@@ -274,15 +303,24 @@ fun descriptionBox(note: Note, onChange: (Note) -> Unit) {
 @Composable
 fun descriptionScreen(
     navController: NavController,
-    notes: MutableList<Note>,
-    noteId: Int){
-
+    noteId: Int
+) {
     val focusManager = LocalFocusManager.current
+    val viewModel: EditViewModel = viewModel()
+
+    val isNewNote = noteId == -1
 
     var note by remember {
         mutableStateOf(
-            notes.find { it.id == noteId }
-                ?: Note(noteId, "", "")
+            if (isNewNote) {
+                Note(
+                    id = (NoteRepository.notes.maxOfOrNull { it.id } ?: 0) + 1,
+                    title = "",
+                    description = ""
+                )
+            } else {
+                viewModel.getNote(noteId)
+            }
         )
     }
 
@@ -295,38 +333,31 @@ fun descriptionScreen(
             ) {
                 focusManager.clearFocus()
             },
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         descriptionScreenTopBanner {
             navController.popBackStack()
         }
-        editableNoteElement(note){
-            note = it
+
+        editableNoteElement(note) { updated ->
+            note = updated
         }
-        descriptionBox(note){
-            note = it
+
+        descriptionBox(note) { updated ->
+            note = updated
         }
 
         Button(
             onClick = {
-                val index = notes.indexOfFirst { it.id == note.id }
-
-                if (index >= 0) {
-                    notes[index] = note
-                } else {
-                    notes.add(note)
-                }
-
+                viewModel.save(note)
                 navController.popBackStack()
             },
             modifier = Modifier.padding(16.dp)
         ) {
             Text("Save")
         }
-
     }
-
 }
-
 
 
 /*
