@@ -40,6 +40,10 @@ android {
 }
 
 dependencies {
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.gson)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

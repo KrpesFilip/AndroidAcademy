@@ -1,12 +1,14 @@
 package com.example.academyproject
 
+import PutTaskRequest
+import android.annotation.SuppressLint
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -31,117 +33,176 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.*
+import com.example.academyproject.model.CreateTaskRequest
+import com.example.academyproject.model.LoginRequest
+import com.example.academyproject.model.Task
+import com.example.academyproject.network.RetrofitInstance
+import com.example.academyproject.network.SessionManager
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.combinedClickable
 
 class MainActivity : ComponentActivity() {
+    @SuppressLint("CoroutineCreationDuringComposition")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
+
+        lifecycleScope.launch {
+            try {
+                val response = RetrofitInstance.api.login(
+                    LoginRequest(
+                        username = "test@test.com",
+                        password = "123456"
+                    )
+                )
+
+                SessionManager.token = response.token
+
+                Log.d("LOGIN", response.token)
+
+                setContent{
+                    AppNavigation()
+                }
+
+            } catch (e: Exception) {
+                Log.e("LOGIN", e.message.toString())
+            }
+        }
 
 
 
-            val navController = rememberNavController()
-            Scaffold { innerPadding ->
 
-                Box(modifier = Modifier.padding(innerPadding)) {
-                    //notesScreen()
-                    NavHost(
-                        navController = navController,
-                        startDestination = "notes"
-                    ) {
-                        composable("notes") {
-                            notesScreen(navController)
-                        }
+    }
+}
 
-                        composable("edit/{noteId}") { backStackEntry ->
-                            val id = backStackEntry.arguments?.getString("noteId")!!.toInt()
-                            descriptionScreen(navController, id)
+@Composable
+fun AppNavigation() {
 
-                        }
-                    }
+    val navController = rememberNavController()
+    val viewModel: TaskViewModel = viewModel() // 👈 ONE shared instance
+
+    Scaffold { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+
+            NavHost(
+                navController = navController,
+                startDestination = "notes"
+            ) {
+                composable("notes") {
+                    notesScreen(navController, viewModel)
+                }
+
+                composable("edit/{noteId}") {
+                    val id = it.arguments?.getString("noteId") ?: ""
+                    descriptionScreen(navController, id, viewModel)
                 }
             }
         }
     }
 }
 
+class TaskViewModel : ViewModel() {
 
-data class Note(
-    val id:Int,
-    var title:String,
-    var description:String
-)
+    var tasks = mutableStateListOf<Task>()
+        private set
 
-object NoteRepository {
-    val notes = mutableStateListOf(
-        Note(1, "tit1", ""),
-        Note(2, "tit2", "")
-    )
-}
+    var selectedTask by mutableStateOf<Task?>(null)
+        private set
 
-class NotesViewModel : ViewModel() {
-    val notes = NoteRepository.notes
-}
 
-class EditViewModel : ViewModel() {
-
-    fun getNote(id: Int): Note {
-        return NoteRepository.notes.find { it.id == id }
-            ?: Note(id, "", "")
+    fun setTask(task: Task?) {
+        selectedTask = task
+    }
+    fun updateSelectedTask(update: (Task) -> Task) {
+        selectedTask = selectedTask?.let(update)
     }
 
-    fun save(note: Note) {
-        val index = NoteRepository.notes.indexOfFirst { it.id == note.id }
+    fun loadTaskById(id: String) {
+        viewModelScope.launch {
+            try {
+                selectedTask = RetrofitInstance.api.getTask(id)
+            } catch (e: Exception) {
+                Log.e("TASK", e.message.toString())
+            }
+        }
+    }
 
-        if (index >= 0) {
-            NoteRepository.notes[index] = note
-        } else {
-            NoteRepository.notes.add(note)
+    fun loadTasks() {
+        viewModelScope.launch {
+            try {
+                val result = RetrofitInstance.api.getTasks()
+                tasks.clear()
+                tasks.addAll(result.tasks)
+            } catch (e: Exception) {
+                Log.e("TASKS", e.message.toString())
+            }
+        }
+    }
+
+    fun deleteTask(id: String?) {
+        if (id == null) return
+
+        viewModelScope.launch {
+            try {
+                RetrofitInstance.api.deleteTask(id)
+                loadTasks()
+            } catch (e: Exception) {
+                Log.e("DELETE", e.message.toString())
+            }
+        }
+    }
+
+    fun createTask(title: String, body: String) {
+        viewModelScope.launch {
+            try {
+                val response = RetrofitInstance.api.createTask(
+                    CreateTaskRequest(title, body)
+                )
+
+                Log.d("CREATE", "Created task with id: ${response.id}")
+
+                loadTasks()
+            } catch (e: Exception) {
+                Log.e("CREATE", e.message.toString())
+            }
+        }
+    }
+
+
+    fun updateTask(id: String, title: String, body: String) {
+        viewModelScope.launch {
+            try {
+                RetrofitInstance.api.updateTask(
+                    id,
+                    PutTaskRequest(title, body)
+                )
+                loadTasks()
+            } catch (e: Exception) {
+                Log.e("UPDATE", e.message.toString())
+            }
         }
     }
 }
 
-@Composable
-fun noteElement(note:Note, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .clickable { onClick() },
-        shape = RoundedCornerShape(50.dp),
-        elevation = CardDefaults.cardElevation(4.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-                .padding(horizontal = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = note.title,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Left
-            )
 
-        }
-
-    }
-}
 
 @Composable
-fun editableNoteElement(note: Note, onChange:(Note)->Unit) {
+fun editableTaskElement(task: Task, onChange:(Task)->Unit) {
 
     Card(
         modifier = Modifier
@@ -159,9 +220,9 @@ fun editableNoteElement(note: Note, onChange:(Note)->Unit) {
         ) {
 
             TextField(
-                value = note.title,
+                value = task.title,
                 onValueChange = {
-                    onChange(note.copy(title = it))
+                    onChange(task.copy(title = it))
                 },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
@@ -229,45 +290,113 @@ fun descriptionScreenTopBanner(onClick: () -> Unit) {
     }
 }
 
-@Composable
-fun notesList(notes: List<Note>, navController: NavController){
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ){
-        items(notes) { item ->
-            noteElement(item) {
-                navController.navigate("description/${item.id}")
-            }
-        }
+@Composable
+fun notesScreen(
+    navController: NavController,
+    viewModel: TaskViewModel) {
+
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var taskToDelete by remember { mutableStateOf<Task?>(null) }
+
+
+
+    LaunchedEffect(Unit) {
+        viewModel.loadTasks()
     }
-}
-
-@Composable
-fun notesScreen(navController: NavController){
-
-    val viewModel: NotesViewModel = viewModel()
-
 
     Column {
+
         notesScreenTopBanner {
-            val newId = (viewModel.notes.maxOfOrNull { it.id } ?: 0) + 1
             navController.navigate("edit/-1")
         }
+
         LazyColumn {
-            items(viewModel.notes) { note ->
-                noteElement(note) {
-                    navController.navigate("edit/${note.id}")
-                }
+            items(viewModel.tasks) { task ->
+
+                taskElement(
+                    task = task,
+                    onClick = {
+                        navController.navigate("edit/${task.id}")
+                    },
+                    onLongClick = {
+                        taskToDelete = task
+                        showDeleteDialog = true
+                    }
+                )
             }
         }
-    }
 
+        if (showDeleteDialog) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = {
+                    showDeleteDialog = false
+                    taskToDelete = null
+                },
+                title = {
+                    Text("Delete task?")
+                },
+                text = {
+                    Text("Are you sure you want to delete this task?")
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteTask(taskToDelete?.id)
+                            showDeleteDialog = false
+                            taskToDelete = null
+                        }
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    Button(
+                        onClick = {
+                            showDeleteDialog = false
+                            taskToDelete = null
+                        }
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+    }
 }
 
 @Composable
-fun descriptionBox(note: Note, onChange: (Note) -> Unit) {
+fun taskElement(
+    task: Task,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
+        shape = RoundedCornerShape(50.dp),
+        elevation = CardDefaults.cardElevation(4.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(task.title)
+        }
+    }
+}
+
+@Composable
+fun descriptionBox(task: Task, onChange: (Task) -> Unit) {
 
     Card(
         modifier = Modifier
@@ -277,9 +406,9 @@ fun descriptionBox(note: Note, onChange: (Note) -> Unit) {
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         TextField(
-            value = note.description,
+            value = task.body,
             onValueChange = {
-                onChange(note.copy(description = it))
+                onChange(task.copy(body = it))
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -299,29 +428,32 @@ fun descriptionBox(note: Note, onChange: (Note) -> Unit) {
         )
     }
 }
-
 @Composable
 fun descriptionScreen(
     navController: NavController,
-    noteId: Int
+    noteId: String,
+    viewModel: TaskViewModel
 ) {
+    val task = viewModel.selectedTask
+    val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val viewModel: EditViewModel = viewModel()
+    val isNew = noteId == "-1"
 
-    val isNewNote = noteId == -1
+    LaunchedEffect(noteId) {
+        if (isNew) {
+            viewModel.setTask(
+                Task(id = null, title = "", body = "")
+            )
+        } else {
+            viewModel.loadTaskById(noteId)
+        }
+    }
 
-    var note by remember {
-        mutableStateOf(
-            if (isNewNote) {
-                Note(
-                    id = (NoteRepository.notes.maxOfOrNull { it.id } ?: 0) + 1,
-                    title = "",
-                    description = ""
-                )
-            } else {
-                viewModel.getNote(noteId)
-            }
-        )
+    if (task == null) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Loading...")
+        }
+        return
     }
 
     Column(
@@ -332,28 +464,48 @@ fun descriptionScreen(
                 interactionSource = remember { MutableInteractionSource() }
             ) {
                 focusManager.clearFocus()
-            },
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            }
+            .padding(16.dp)
     ) {
+
         descriptionScreenTopBanner {
             navController.popBackStack()
         }
 
-        editableNoteElement(note) { updated ->
-            note = updated
-        }
-
-        descriptionBox(note) { updated ->
-            note = updated
-        }
-
-        Button(
-            onClick = {
-                viewModel.save(note)
-                navController.popBackStack()
+        TextField(
+            value = task.title,
+            onValueChange = {
+                viewModel.updateSelectedTask { current ->
+                    current.copy(title = it)
+                }
             },
-            modifier = Modifier.padding(16.dp)
-        ) {
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Enter title...") }
+        )
+
+        TextField(
+            value = task.body,
+            onValueChange = {
+                viewModel.updateSelectedTask { current ->
+                    current.copy(body = it)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp),
+            placeholder = { Text("Enter description...") }
+        )
+
+        Button(onClick = {
+            scope.launch {
+                if (isNew) {
+                    viewModel.createTask(task.title, task.body)
+                } else {
+                    viewModel.updateTask(noteId, task.title, task.body)
+                }
+                navController.popBackStack()
+            }
+        }) {
             Text("Save")
         }
     }
