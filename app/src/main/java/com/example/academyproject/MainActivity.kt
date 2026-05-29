@@ -1,7 +1,10 @@
 package com.example.academyproject
 
+import kotlinx.coroutines.delay
 import PutTaskRequest
+import TaskRepository
 import android.annotation.SuppressLint
+import android.app.Application
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -55,6 +58,12 @@ import com.example.academyproject.network.RetrofitInstance
 import com.example.academyproject.network.SessionManager
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.example.academyproject.data.local.DatabaseProvider
+import com.example.academyproject.data.local.TaskEntity
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     @SuppressLint("CoroutineCreationDuringComposition")
@@ -62,20 +71,23 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val repository = TaskRepository(
+            DatabaseProvider.getDatabase(this).taskDao(),
+            RetrofitInstance.api
+        )
+
         lifecycleScope.launch {
             try {
                 val response = RetrofitInstance.api.login(
-                    LoginRequest(
-                        username = "test@test.com",
-                        password = "123456"
-                    )
+                    LoginRequest("test@test.com", "123456")
                 )
 
                 SessionManager.token = response.token
 
-                Log.d("LOGIN", response.token)
 
-                setContent{
+
+
+                setContent {
                     AppNavigation()
                 }
 
@@ -94,7 +106,15 @@ class MainActivity : ComponentActivity() {
 fun AppNavigation() {
 
     val navController = rememberNavController()
-    val viewModel: TaskViewModel = viewModel() // 👈 ONE shared instance
+    val context = LocalContext.current
+
+    val viewModel: TaskViewModel = viewModel(
+        factory = TaskViewModelFactory(context.applicationContext as Application)
+    )
+
+    LaunchedEffect(Unit) {
+        viewModel.syncOnStart()
+    }
 
     Scaffold { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
@@ -112,10 +132,199 @@ fun AppNavigation() {
                     descriptionScreen(navController, id, viewModel)
                 }
             }
+
+
+            if (viewModel.isSyncing) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(12.dp),
+                    contentAlignment = Alignment.BottomEnd
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        strokeWidth = 2.dp
+                    )
+                }
+            }
         }
     }
 }
 
+class TaskViewModel(
+    application: Application,
+    private val repository: TaskRepository
+) : AndroidViewModel(application) {
+
+    private val db = com.example.academyproject.data.local.DatabaseProvider
+        .getDatabase(application)
+
+    private val dao = db.taskDao()
+
+    var tasks = androidx.compose.runtime.mutableStateListOf<com.example.academyproject.data.local.TaskEntity>()
+        private set
+
+    var selectedTask by androidx.compose.runtime.mutableStateOf<com.example.academyproject.data.local.TaskEntity?>(null)
+        private set
+
+    var isSyncing by mutableStateOf(false)
+        private set
+
+    init {
+        observeTasks()
+    }
+
+
+
+
+
+    private fun observeTasks() {
+        viewModelScope.launch {
+            repository.getTasks().collect {
+                tasks.clear()
+                tasks.addAll(it)
+            }
+        }
+    }
+
+    fun syncOnStart() {
+        viewModelScope.launch {
+
+            isSyncing = true
+
+            val startTime = System.currentTimeMillis()
+
+            try {
+                repository.syncFromRemote()
+            } catch (e: Exception) {
+                Log.e("SYNC_START", e.message.toString())
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed < 2000) {
+                delay(2000 - elapsed)
+            }
+
+            isSyncing = false
+        }
+    }
+
+    fun setTask(task: com.example.academyproject.data.local.TaskEntity?) {
+        selectedTask = task
+    }
+
+    fun updateSelectedTask(update: (com.example.academyproject.data.local.TaskEntity) -> com.example.academyproject.data.local.TaskEntity) {
+        selectedTask = selectedTask?.let(update)
+    }
+
+    fun createTask(title: String, body: String) {
+        viewModelScope.launch {
+
+            isSyncing = true
+            val startTime = System.currentTimeMillis()
+
+            val localTask = TaskEntity(
+                id = UUID.randomUUID().toString(),
+                title = title,
+                body = body,
+                isSynced = false
+            )
+
+            repository.insertLocal(localTask)
+
+            try {
+                val newId = repository.createRemoteTask(title, body)
+
+                repository.deleteLocal(localTask.id)
+
+                repository.insertLocal(
+                    localTask.copy(
+                        id = newId,
+                        isSynced = true
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e("SYNC_CREATE", e.message.toString())
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed < 2000) {
+                delay(2000 - elapsed)
+            }
+
+            isSyncing = false
+        }
+    }
+
+    fun deleteTask(id: String?) {
+        if (id == null) return
+
+        viewModelScope.launch {
+
+            isSyncing = true
+            val startTime = System.currentTimeMillis()
+
+            repository.deleteLocal(id)
+
+            try {
+                repository.deleteRemoteTask(id)
+            } catch (e: Exception) {
+                Log.e("SYNC_DELETE", e.message.toString())
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed < 2000) {
+                delay(2000 - elapsed)
+            }
+
+            isSyncing = false
+        }
+    }
+
+    fun updateTask(task: TaskEntity) {
+        viewModelScope.launch {
+
+            isSyncing = true
+            val startTime = System.currentTimeMillis()
+
+            repository.updateLocal(task.copy(isSynced = false))
+
+            try {
+                repository.updateRemoteTask(task)
+                repository.updateLocal(task.copy(isSynced = true))
+            } catch (e: Exception) {
+                Log.e("SYNC_UPDATE", e.message.toString())
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            if (elapsed < 2000) {
+                delay(2000 - elapsed)
+            }
+
+            isSyncing = false
+        }
+    }
+}
+
+class TaskViewModelFactory(
+    private val application: Application
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        val db = DatabaseProvider.getDatabase(application)
+        val dao = db.taskDao()
+
+        val repository = TaskRepository(
+            dao,
+            RetrofitInstance.api
+        )
+
+        return TaskViewModel(application, repository) as T
+    }
+}
+
+
+
+/*  OLD VM
 class TaskViewModel : ViewModel() {
 
     var tasks = mutableStateListOf<Task>()
@@ -199,10 +408,10 @@ class TaskViewModel : ViewModel() {
     }
 }
 
-
+*/
 
 @Composable
-fun editableTaskElement(task: Task, onChange:(Task)->Unit) {
+fun editableTaskElement(task: TaskEntity, onChange:(TaskEntity)->Unit) {
 
     Card(
         modifier = Modifier
@@ -297,13 +506,11 @@ fun notesScreen(
     viewModel: TaskViewModel) {
 
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var taskToDelete by remember { mutableStateOf<Task?>(null) }
+    var taskToDelete by remember { mutableStateOf<TaskEntity?>(null) }
 
 
 
-    LaunchedEffect(Unit) {
-        viewModel.loadTasks()
-    }
+
 
     Column {
 
@@ -368,7 +575,7 @@ fun notesScreen(
 
 @Composable
 fun taskElement(
-    task: Task,
+    task: TaskEntity,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -396,7 +603,7 @@ fun taskElement(
 }
 
 @Composable
-fun descriptionBox(task: Task, onChange: (Task) -> Unit) {
+fun descriptionBox(task: TaskEntity, onChange: (TaskEntity) -> Unit) {
 
     Card(
         modifier = Modifier
@@ -434,7 +641,12 @@ fun descriptionScreen(
     noteId: String,
     viewModel: TaskViewModel
 ) {
-    val task = viewModel.selectedTask
+    val task = viewModel.selectedTask ?: TaskEntity(
+        id = "",
+        title = "",
+        body = "",
+        isSynced = false
+    )
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
     val isNew = noteId == "-1"
@@ -442,19 +654,20 @@ fun descriptionScreen(
     LaunchedEffect(noteId) {
         if (isNew) {
             viewModel.setTask(
-                Task(id = null, title = "", body = "")
+                TaskEntity(
+                    id = java.util.UUID.randomUUID().toString(),
+                    title = "",
+                    body = "",
+                    isSynced = false
+                )
             )
         } else {
-            viewModel.loadTaskById(noteId)
+            val task = viewModel.tasks.find { it.id == noteId }
+            viewModel.setTask(task)
         }
     }
 
-    if (task == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Loading...")
-        }
-        return
-    }
+
 
     Column(
         modifier = Modifier
@@ -501,7 +714,7 @@ fun descriptionScreen(
                 if (isNew) {
                     viewModel.createTask(task.title, task.body)
                 } else {
-                    viewModel.updateTask(noteId, task.title, task.body)
+                    viewModel.updateTask(task)
                 }
                 navController.popBackStack()
             }
