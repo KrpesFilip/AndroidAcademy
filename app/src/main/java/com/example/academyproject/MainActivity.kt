@@ -63,6 +63,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.academyproject.data.local.DatabaseProvider
 import com.example.academyproject.data.local.TaskEntity
+import com.example.academyproject.util.AppLogger
 import java.util.UUID
 
 class MainActivity : ComponentActivity() {
@@ -169,19 +170,22 @@ class TaskViewModel(
     var isSyncing by mutableStateOf(false)
         private set
 
+    private val logger = AppLogger("TaskViewModel")
+
     init {
         observeTasks()
+        logger.logD("ViewModel initialized")
     }
-
-
-
-
 
     private fun observeTasks() {
         viewModelScope.launch {
+            logger.logD("Observing tasks")
+
             repository.getTasks().collect {
                 tasks.clear()
                 tasks.addAll(it)
+
+                logger.logD("Tasks updated: ${it.size}")
             }
         }
     }
@@ -189,14 +193,16 @@ class TaskViewModel(
     fun syncOnStart() {
         viewModelScope.launch {
 
-            isSyncing = true
+            logger.logI("syncOnStart started")
 
+            isSyncing = true
             val startTime = System.currentTimeMillis()
 
             try {
                 repository.syncFromRemote()
+                logger.logD("syncFromRemote success")
             } catch (e: Exception) {
-                Log.e("SYNC_START", e.message.toString())
+                logger.logE("syncOnStart failed: ${e.message}")
             }
 
             val elapsed = System.currentTimeMillis() - startTime
@@ -205,19 +211,26 @@ class TaskViewModel(
             }
 
             isSyncing = false
+            logger.logI("syncOnStart finished")
         }
     }
 
-    fun setTask(task: com.example.academyproject.data.local.TaskEntity?) {
+    fun setTask(task: TaskEntity?) {
         selectedTask = task
+        logger.logD("Selected task set: ${task?.id}")
     }
 
-    fun updateSelectedTask(update: (com.example.academyproject.data.local.TaskEntity) -> com.example.academyproject.data.local.TaskEntity) {
+    fun updateSelectedTask(
+        update: (TaskEntity) -> TaskEntity
+    ) {
         selectedTask = selectedTask?.let(update)
+        logger.logD("Selected task updated")
     }
 
     fun createTask(title: String, body: String) {
         viewModelScope.launch {
+
+            logger.logI("createTask started")
 
             isSyncing = true
             val startTime = System.currentTimeMillis()
@@ -230,77 +243,90 @@ class TaskViewModel(
             )
 
             repository.insertLocal(localTask)
+            logger.logD("Local task inserted: ${localTask.id}")
 
             try {
                 val newId = repository.createRemoteTask(title, body)
 
                 repository.deleteLocal(localTask.id)
-
                 repository.insertLocal(
                     localTask.copy(
                         id = newId,
                         isSynced = true
                     )
                 )
+
+                logger.logI("Remote task created: $newId")
+
             } catch (e: Exception) {
-                Log.e("SYNC_CREATE", e.message.toString())
+                logger.logE("createTask failed: ${e.message}")
             }
 
             val elapsed = System.currentTimeMillis() - startTime
-            if (elapsed < 2000) {
-                delay(2000 - elapsed)
-            }
+            if (elapsed < 2000) delay(2000 - elapsed)
 
             isSyncing = false
+            logger.logI("createTask finished")
         }
     }
 
     fun deleteTask(id: String?) {
-        if (id == null) return
+        if (id == null) {
+            logger.logW("deleteTask called with null id")
+            return
+        }
 
         viewModelScope.launch {
+
+            logger.logI("deleteTask started: $id")
 
             isSyncing = true
             val startTime = System.currentTimeMillis()
 
             repository.deleteLocal(id)
+            logger.logD("Local task deleted: $id")
 
             try {
                 repository.deleteRemoteTask(id)
+                logger.logI("Remote task deleted: $id")
             } catch (e: Exception) {
-                Log.e("SYNC_DELETE", e.message.toString())
+                logger.logE("deleteTask failed: ${e.message}")
             }
 
             val elapsed = System.currentTimeMillis() - startTime
-            if (elapsed < 2000) {
-                delay(2000 - elapsed)
-            }
+            if (elapsed < 2000) delay(2000 - elapsed)
 
             isSyncing = false
+            logger.logI("deleteTask finished: $id")
         }
     }
 
     fun updateTask(task: TaskEntity) {
         viewModelScope.launch {
 
+            logger.logI("updateTask started: ${task.id}")
+
             isSyncing = true
             val startTime = System.currentTimeMillis()
 
             repository.updateLocal(task.copy(isSynced = false))
+            logger.logD("Marked task unsynced: ${task.id}")
 
             try {
                 repository.updateRemoteTask(task)
+
                 repository.updateLocal(task.copy(isSynced = true))
+                logger.logI("Remote update successful: ${task.id}")
+
             } catch (e: Exception) {
-                Log.e("SYNC_UPDATE", e.message.toString())
+                logger.logE("updateTask failed: ${e.message}")
             }
 
             val elapsed = System.currentTimeMillis() - startTime
-            if (elapsed < 2000) {
-                delay(2000 - elapsed)
-            }
+            if (elapsed < 2000) delay(2000 - elapsed)
 
             isSyncing = false
+            logger.logI("updateTask finished: ${task.id}")
         }
     }
 }
