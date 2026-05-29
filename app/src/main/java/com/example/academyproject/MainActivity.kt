@@ -63,6 +63,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.example.academyproject.data.local.DatabaseProvider
 import com.example.academyproject.data.local.TaskEntity
+import com.example.academyproject.data.repository.TaskRepositoryContract
 import com.example.academyproject.util.AppLogger
 import java.util.UUID
 
@@ -74,7 +75,8 @@ class MainActivity : ComponentActivity() {
 
         val repository = TaskRepository(
             DatabaseProvider.getDatabase(this).taskDao(),
-            RetrofitInstance.api
+            RetrofitInstance.api,
+            AppLogger("TaskRepository")
         )
 
         lifecycleScope.launch {
@@ -153,7 +155,7 @@ fun AppNavigation() {
 
 class TaskViewModel(
     application: Application,
-    private val repository: TaskRepository
+    private val repository: TaskRepositoryContract
 ) : AndroidViewModel(application) {
 
     private val db = com.example.academyproject.data.local.DatabaseProvider
@@ -341,7 +343,8 @@ class TaskViewModelFactory(
 
         val repository = TaskRepository(
             dao,
-            RetrofitInstance.api
+            RetrofitInstance.api,
+            AppLogger("TaskRepository")
         )
 
         return TaskViewModel(application, repository) as T

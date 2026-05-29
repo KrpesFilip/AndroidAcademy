@@ -1,34 +1,37 @@
 import android.util.Log
 import com.example.academyproject.data.local.TaskDao
 import com.example.academyproject.data.local.TaskEntity
+import com.example.academyproject.data.repository.TaskRepositoryContract
 import com.example.academyproject.model.CreateTaskRequest
 import com.example.academyproject.network.ApiService
 import com.example.academyproject.util.AppLogger
+import com.example.academyproject.util.Logger
+
 class TaskRepository(
     private val dao: TaskDao,
-    private val api: ApiService
-) {
+    private val api: ApiService,
+    private val logger: Logger
+): TaskRepositoryContract {
 
-    private val logger = AppLogger("TaskRepository")
 
-    fun getTasks() = dao.getTasks()
+    override fun getTasks() = dao.getTasks()
 
-    suspend fun insertLocal(task: TaskEntity) {
+    override suspend fun insertLocal(task: TaskEntity) {
         dao.insert(task)
         logger.logD("Inserted local task: ${task.id}")
     }
 
-    suspend fun deleteLocal(id: String) {
+    override suspend fun deleteLocal(id: String) {
         dao.deleteById(id)
         logger.logD("Deleted local task: $id")
     }
 
-    suspend fun updateLocal(task: TaskEntity) {
+    override suspend fun updateLocal(task: TaskEntity) {
         dao.update(task)
         logger.logD("Updated local task: ${task.id}")
     }
 
-    suspend fun syncFromRemote() {
+    override suspend fun syncFromRemote() {
         try {
             logger.logI("syncFromRemote started")
 
@@ -59,7 +62,7 @@ class TaskRepository(
         }
     }
 
-    suspend fun deleteRemoteTask(id: String) {
+    override suspend fun deleteRemoteTask(id: String) {
         try {
             logger.logI("Deleting remote task: $id")
             api.deleteTask(id)
@@ -70,7 +73,7 @@ class TaskRepository(
         }
     }
 
-    suspend fun createRemoteTask(title: String, body: String): String {
+    override suspend fun createRemoteTask(title: String, body: String): String {
         try {
             logger.logI("Creating remote task: $title")
 
@@ -88,7 +91,7 @@ class TaskRepository(
         }
     }
 
-    suspend fun updateRemoteTask(task: TaskEntity) {
+    override suspend fun updateRemoteTask(task: TaskEntity) {
         try {
             logger.logI("Updating remote task: ${task.id}")
 

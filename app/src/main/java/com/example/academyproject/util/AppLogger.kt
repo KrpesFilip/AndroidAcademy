@@ -4,21 +4,21 @@ import android.util.Log
 
 class AppLogger(
     private val tag: String
-) {
+): Logger {
 
-    fun logD(message: String) {
+    override fun logD(message: String) {
         Log.d(tag, message)
     }
 
-    fun logI(message: String) {
+    override fun logI(message: String) {
         Log.i(tag, message)
     }
 
-    fun logE(message: String) {
+    override fun logE(message: String) {
         Log.e(tag, message)
     }
 
-    fun logW(message: String) {
+    override fun logW(message: String) {
         Log.w(tag, message)
     }
 }
